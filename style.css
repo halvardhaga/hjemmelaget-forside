@@ -78,13 +78,27 @@ body {
 }
 
 .tile img,
-.tile .emoji-icon {
+.tile .emoji-icon,
+.tile .letter-icon {
   width: 32px;
   height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 24px;
+}
+
+/* Icons arrive at wildly different sizes and aspect ratios; contain keeps a
+   wordmark from being stretched into a square. */
+.tile img {
+  object-fit: contain;
+}
+
+.tile .letter-icon {
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .tile span {

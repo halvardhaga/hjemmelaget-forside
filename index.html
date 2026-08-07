@@ -26,6 +26,9 @@
       <label>Icon (optional emoji)
         <input id="link-icon" type="text" maxlength="4" autocomplete="off">
       </label>
+      <label>Icon URL (optional, overrides auto)
+        <input id="link-icon-url" type="text" placeholder="https://…/icon.png" autocomplete="off">
+      </label>
       <div class="modal-actions">
         <button id="link-delete" type="button">Delete</button>
         <div class="modal-actions-right">
@@ -44,17 +47,51 @@
     const GRID_ROWS = 4;
     const GRID_SLOTS = GRID_COLS * GRID_ROWS;
     const LINKS_STORAGE_KEY = "hjemmelaget-links";
+    const ICON_CACHE_KEY = "hjemmelaget-icon-cache";
 
     let links = [];
     let editMode = false;
 
-    function faviconUrl(url) {
+    // Icon sources, best match first. Google's s2 service keys its cache on the
+    // registrable domain, so mail.google.com resolves to the generic Google "G"
+    // rather than the Gmail envelope the browser tab shows — it stays last as a
+    // fallback. The site's own /favicon.ico is what the tab actually uses, and
+    // icon.horse/favicone read <link rel="icon"> for sites that don't serve one
+    // at the legacy path. buildIcon walks the list until an image decodes.
+    function iconCandidates(url) {
+      let u;
       try {
-        const domain = new URL(url).hostname;
-        return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+        u = new URL(url);
       } catch {
-        return "";
+        return [];
       }
+      const host = u.hostname;
+      const root = host.split(".").slice(-2).join(".");
+      const list = [
+        `${u.origin}/favicon.ico`,
+        `https://icon.horse/icon/${host}`,
+        `https://favicone.com/${host}?s=128`,
+        `https://www.google.com/s2/favicons?domain=${host}&sz=64`
+      ];
+      if (root !== host) {
+        list.push(`https://www.google.com/s2/favicons?domain=${root}&sz=64`);
+      }
+      return list;
+    }
+
+    function readIconCache() {
+      try {
+        return JSON.parse(localStorage.getItem(ICON_CACHE_KEY)) || {};
+      } catch {
+        return {};
+      }
+    }
+
+    function rememberIcon(url, src) {
+      const cache = readIconCache();
+      if (cache[url] === src) return;
+      cache[url] = src;
+      localStorage.setItem(ICON_CACHE_KEY, JSON.stringify(cache));
     }
 
     function normalizeUrl(url) {
@@ -81,6 +118,13 @@
       localStorage.setItem(LINKS_STORAGE_KEY, JSON.stringify(list));
     }
 
+    function letterIcon(name) {
+      const span = document.createElement("span");
+      span.className = "letter-icon";
+      span.textContent = (name || "?").trim().charAt(0).toUpperCase();
+      return span;
+    }
+
     function buildIcon(link) {
       if (link.icon) {
         const span = document.createElement("span");
@@ -88,9 +132,78 @@
         span.textContent = link.icon;
         return span;
       }
+
       const img = document.createElement("img");
-      img.src = faviconUrl(link.url);
       img.alt = "";
+      img.loading = "lazy";
+
+      // An explicit iconUrl is a deliberate choice — never second-guess it.
+      if (link.iconUrl) {
+        img.src = link.iconUrl;
+        return img;
+      }
+
+      const candidates = iconCandidates(link.url);
+      if (!candidates.length) return letterIcon(link.name);
+
+      // Try whatever worked last time first, so a resolved link costs one request.
+      const cached = readIconCache()[link.url];
+      const queue = cached
+        ? [cached, ...candidates.filter((c) => c !== cached)]
+        : candidates;
+
+      const MIN_PX = 32;
+      let i = 0;
+      let timer = null;
+      let best = null;
+      let settled = false;
+
+      function attempt() {
+        // Some hosts accept the connection and then never answer, which fires
+        // neither load nor error — without a timeout the tile stays blank.
+        timer = setTimeout(advance, 2500);
+        img.src = queue[i];
+      }
+
+      function settle(src) {
+        settled = true;
+        clearTimeout(timer);
+        if (img.src !== src) img.src = src;
+        rememberIcon(link.url, src);
+      }
+
+      function advance() {
+        clearTimeout(timer);
+        i += 1;
+        if (i < queue.length) {
+          attempt();
+          return;
+        }
+        if (best) {
+          settle(best.src);
+          return;
+        }
+        img.replaceWith(letterIcon(link.name));
+      }
+
+      img.addEventListener("error", () => {
+        if (!settled) advance();
+      });
+      img.addEventListener("load", () => {
+        if (settled) return;
+        clearTimeout(timer);
+        // A 16px legacy .ico is the right logo but looks soft on a 32px tile,
+        // so hold onto it and keep looking for a sharper copy of the same icon.
+        // naturalWidth 0 means a scalable SVG — that upscales fine, so take it.
+        const w = img.naturalWidth;
+        if (!w || w >= MIN_PX) {
+          settle(img.src);
+          return;
+        }
+        if (!best || w > best.w) best = { src: img.src, w };
+        advance();
+      });
+      attempt();
       return img;
     }
 
@@ -113,7 +226,13 @@
 
     function upsertLink(slot, data) {
       links = links.filter((l) => l.slot !== slot);
-      links.push({ slot, name: data.name, url: data.url, ...(data.icon ? { icon: data.icon } : {}) });
+      links.push({
+        slot,
+        name: data.name,
+        url: data.url,
+        ...(data.icon ? { icon: data.icon } : {}),
+        ...(data.iconUrl ? { iconUrl: data.iconUrl } : {})
+      });
       saveLinks(links);
       renderLinks();
     }
@@ -220,6 +339,7 @@
       document.getElementById("link-name").value = link ? link.name : "";
       document.getElementById("link-url").value = link ? link.url : "";
       document.getElementById("link-icon").value = link && link.icon ? link.icon : "";
+      document.getElementById("link-icon-url").value = link && link.iconUrl ? link.iconUrl : "";
       document.getElementById("link-delete").style.visibility = link ? "visible" : "hidden";
       document.getElementById("link-modal").classList.remove("hidden");
       document.getElementById("link-name").focus();
@@ -243,11 +363,17 @@
         const name = document.getElementById("link-name").value.trim();
         const url = document.getElementById("link-url").value.trim();
         const icon = document.getElementById("link-icon").value.trim();
+        const iconUrl = document.getElementById("link-icon-url").value.trim();
         if (!name || !url) {
           alert("Name and URL are required.");
           return;
         }
-        upsertLink(formSlot, { name, url: normalizeUrl(url), icon });
+        upsertLink(formSlot, {
+          name,
+          url: normalizeUrl(url),
+          icon,
+          iconUrl: iconUrl ? normalizeUrl(iconUrl) : ""
+        });
         closeLinkForm();
       });
     }
