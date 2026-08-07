@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Home</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="content">
+    <div id="links-column">
+      <div id="links"></div>
+      <button id="edit-toggle" type="button">Edit links</button>
+    </div>
+    <div id="widgets"></div>
+  </div>
+
+  <div id="link-modal" class="modal hidden">
+    <div class="modal-panel">
+      <h3 id="link-modal-title">Add link</h3>
+      <label>Name
+        <input id="link-name" type="text" autocomplete="off">
+      </label>
+      <label>URL
+        <input id="link-url" type="text" placeholder="https://" autocomplete="off">
+      </label>
+      <label>Icon (optional emoji)
+        <input id="link-icon" type="text" maxlength="4" autocomplete="off">
+      </label>
+      <div class="modal-actions">
+        <button id="link-delete" type="button">Delete</button>
+        <div class="modal-actions-right">
+          <button id="link-cancel" type="button">Cancel</button>
+          <button id="link-save" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    const Widgets = {};
+
+    const GRID_COLS = 5;
+    const GRID_ROWS = 4;
+    const GRID_SLOTS = GRID_COLS * GRID_ROWS;
+    const LINKS_STORAGE_KEY = "hjemmelaget-links";
+
+    let links = [];
+    let editMode = false;
+
+    function faviconUrl(url) {
+      try {
+        const domain = new URL(url).hostname;
+        return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+      } catch {
+        return "";
+      }
+    }
+
+    function normalizeUrl(url) {
+      return /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
+    }
+
+    function loadLinks() {
+      const raw = localStorage.getItem(LINKS_STORAGE_KEY);
+      if (raw) {
+        try {
+          return JSON.parse(raw);
+        } catch {
+          // fall through to re-seed from config.js
+        }
+      }
+      const seeded = (CONFIG.links || [])
+        .slice(0, GRID_SLOTS)
+        .map((link, i) => ({ ...link, slot: i }));
+      saveLinks(seeded);
+      return seeded;
+    }
+
+    function saveLinks(list) {
+      localStorage.setItem(LINKS_STORAGE_KEY, JSON.stringify(list));
+    }
+
+    function buildIcon(link) {
+      if (link.icon) {
+        const span = document.createElement("span");
+        span.className = "emoji-icon";
+        span.textContent = link.icon;
+        return span;
+      }
+      const img = document.createElement("img");
+      img.src = faviconUrl(link.url);
+      img.alt = "";
+      return img;
+    }
+
+    function moveLink(fromSlot, toSlot) {
+      if (fromSlot === toSlot) return;
+      const a = links.find((l) => l.slot === fromSlot);
+      const b = links.find((l) => l.slot === toSlot);
+      if (!a) return;
+      a.slot = toSlot;
+      if (b) b.slot = fromSlot;
+      saveLinks(links);
+      renderLinks();
+    }
+
+    function removeLink(slot) {
+      links = links.filter((l) => l.slot !== slot);
+      saveLinks(links);
+      renderLinks();
+    }
+
+    function upsertLink(slot, data) {
+      links = links.filter((l) => l.slot !== slot);
+      links.push({ slot, name: data.name, url: data.url, ...(data.icon ? { icon: data.icon } : {}) });
+      saveLinks(links);
+      renderLinks();
+    }
+
+    function attachDropTarget(el, slot) {
+      el.addEventListener("dragover", (e) => {
+        if (!editMode) return;
+        e.preventDefault();
+        el.classList.add("drag-over");
+      });
+      el.addEventListener("dragleave", () => el.classList.remove("drag-over"));
+      el.addEventListener("drop", (e) => {
+        if (!editMode) return;
+        e.preventDefault();
+        el.classList.remove("drag-over");
+        const fromSlot = parseInt(e.dataTransfer.getData("text/plain"), 10);
+        if (!Number.isNaN(fromSlot)) moveLink(fromSlot, slot);
+      });
+    }
+
+    function buildTile(link, slot) {
+      const wrap = document.createElement("div");
+      wrap.className = "tile-slot";
+      wrap.draggable = editMode;
+
+      const a = document.createElement("a");
+      a.className = "tile";
+      a.href = link.url;
+      a.appendChild(buildIcon(link));
+      const label = document.createElement("span");
+      label.textContent = link.name;
+      a.appendChild(label);
+      a.addEventListener("click", (e) => {
+        if (editMode) {
+          e.preventDefault();
+          openLinkForm(link, slot);
+        }
+      });
+      wrap.appendChild(a);
+
+      const controls = document.createElement("div");
+      controls.className = "tile-controls";
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.textContent = "✎";
+      editBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openLinkForm(link, slot);
+      });
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.textContent = "×";
+      removeBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        removeLink(slot);
+      });
+      controls.appendChild(editBtn);
+      controls.appendChild(removeBtn);
+      wrap.appendChild(controls);
+
+      wrap.addEventListener("dragstart", (e) => {
+        if (!editMode) return;
+        e.dataTransfer.setData("text/plain", String(slot));
+        e.dataTransfer.effectAllowed = "move";
+      });
+      attachDropTarget(wrap, slot);
+
+      return wrap;
+    }
+
+    function buildEmptySlot(slot) {
+      const wrap = document.createElement("div");
+      wrap.className = "tile-slot empty";
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "add-btn";
+      btn.textContent = "+";
+      btn.addEventListener("click", () => openLinkForm(null, slot));
+      wrap.appendChild(btn);
+
+      attachDropTarget(wrap, slot);
+      return wrap;
+    }
+
+    function renderLinks() {
+      const container = document.getElementById("links");
+      container.classList.toggle("edit-mode", editMode);
+      container.innerHTML = "";
+      const bySlot = new Map(links.map((l) => [l.slot, l]));
+      for (let slot = 0; slot < GRID_SLOTS; slot++) {
+        const link = bySlot.get(slot);
+        container.appendChild(link ? buildTile(link, slot) : buildEmptySlot(slot));
+      }
+    }
+
+    let formSlot = null;
+
+    function openLinkForm(link, slot) {
+      formSlot = slot;
+      document.getElementById("link-modal-title").textContent = link ? "Edit link" : "Add link";
+      document.getElementById("link-name").value = link ? link.name : "";
+      document.getElementById("link-url").value = link ? link.url : "";
+      document.getElementById("link-icon").value = link && link.icon ? link.icon : "";
+      document.getElementById("link-delete").style.visibility = link ? "visible" : "hidden";
+      document.getElementById("link-modal").classList.remove("hidden");
+      document.getElementById("link-name").focus();
+    }
+
+    function closeLinkForm() {
+      document.getElementById("link-modal").classList.add("hidden");
+      formSlot = null;
+    }
+
+    function initLinkForm() {
+      document.getElementById("link-cancel").addEventListener("click", closeLinkForm);
+      document.getElementById("link-modal").addEventListener("click", (e) => {
+        if (e.target.id === "link-modal") closeLinkForm();
+      });
+      document.getElementById("link-delete").addEventListener("click", () => {
+        if (formSlot !== null) removeLink(formSlot);
+        closeLinkForm();
+      });
+      document.getElementById("link-save").addEventListener("click", () => {
+        const name = document.getElementById("link-name").value.trim();
+        const url = document.getElementById("link-url").value.trim();
+        const icon = document.getElementById("link-icon").value.trim();
+        if (!name || !url) {
+          alert("Name and URL are required.");
+          return;
+        }
+        upsertLink(formSlot, { name, url: normalizeUrl(url), icon });
+        closeLinkForm();
+      });
+    }
+
+    function initEditToggle() {
+      const btn = document.getElementById("edit-toggle");
+      btn.addEventListener("click", () => {
+        editMode = !editMode;
+        btn.textContent = editMode ? "Done" : "Edit links";
+        renderLinks();
+      });
+    }
+
+    function loadWidgetScript(id) {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = `widgets/${id}.js`;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error(`Failed to load widget script: ${id}`));
+        document.head.appendChild(script);
+      });
+    }
+
+    async function renderWidgets(config) {
+      const container = document.getElementById("widgets");
+      for (const id of config.widgets || []) {
+        const box = document.createElement("div");
+        box.className = "widget";
+        box.id = `widget-${id}`;
+        container.appendChild(box);
+
+        try {
+          await loadWidgetScript(id);
+          const widget = Widgets[id];
+          if (widget && typeof widget.render === "function") {
+            await widget.render(box);
+          } else {
+            box.textContent = `Widget "${id}" did not register correctly.`;
+          }
+        } catch (err) {
+          box.textContent = `Widget "${id}" failed to load.`;
+          console.error(err);
+        }
+      }
+    }
+
+    async function init() {
+      if (typeof CONFIG === "undefined") {
+        throw new Error("CONFIG not found — is config.js loaded before this script?");
+      }
+      document.body.style.backgroundColor = CONFIG.background || "#0d0d0d";
+      links = loadLinks();
+      renderLinks();
+      initEditToggle();
+      initLinkForm();
+      renderWidgets(CONFIG);
+    }
+
+    init().catch((err) => {
+      console.error("Failed to initialize page", err);
+      document.body.innerHTML =
+        '<p style="color:#e8e8e8;font-family:sans-serif;padding:2rem;">Failed to load config.js — see console.</p>';
+    });
+  </script>
+</body>
+</html>
