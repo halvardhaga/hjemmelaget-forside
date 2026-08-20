@@ -35,7 +35,7 @@ body {
 #links {
   display: grid;
   grid-template-columns: repeat(5, 90px);
-  grid-auto-rows: 96px;
+  grid-auto-rows: 104px;
   gap: 1rem;
   justify-content: center;
 }
@@ -80,12 +80,12 @@ body {
 .tile img,
 .tile .emoji-icon,
 .tile .letter-icon {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 30px;
 }
 
 /* Icons arrive at wildly different sizes and aspect ratios; contain keeps a
@@ -97,7 +97,7 @@ body {
 .tile .letter-icon {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.12);
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 600;
 }
 
