@@ -9,6 +9,7 @@
   <div id="content">
     <div id="links-column">
       <div id="links"></div>
+      <div id="page-nav" class="hidden"></div>
       <button id="edit-toggle" type="button">Edit links</button>
     </div>
     <div id="widgets"></div>
@@ -45,12 +46,14 @@
 
     const GRID_COLS = 5;
     const GRID_ROWS = 4;
-    const GRID_SLOTS = GRID_COLS * GRID_ROWS;
+    const PAGE_SLOTS = GRID_COLS * GRID_ROWS;
     const LINKS_STORAGE_KEY = "hjemmelaget-links";
     const ICON_CACHE_KEY = "hjemmelaget-icon-cache";
 
     let links = [];
     let editMode = false;
+    let pages = 1;
+    let currentPage = 0;
 
     // Icon sources, best match first. Google's s2 service keys its cache on the
     // registrable domain, so mail.google.com resolves to the generic Google "G"
@@ -98,17 +101,42 @@
       return /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
     }
 
+    // Slots stay a single global sequence: page p owns slots p * PAGE_SLOTS
+    // through p * PAGE_SLOTS + 19. A store written before pages existed only
+    // uses 0-19, so it is already a valid page 1 and needs no migration.
+    function resolvePageCount(stored) {
+      if (Number.isInteger(CONFIG.pages) && CONFIG.pages > 0) return CONFIG.pages;
+      // A missing or malformed `pages` must not read as "shrink to one page" —
+      // that would prune real links away. Fit the count to what is stored.
+      console.warn("CONFIG.pages missing or invalid; keeping every stored page.");
+      const highest = stored.reduce((max, l) => Math.max(max, l.slot), -1);
+      return Math.max(1, Math.floor(highest / PAGE_SLOTS) + 1);
+    }
+
     function loadLinks() {
+      let stored = null;
       const raw = localStorage.getItem(LINKS_STORAGE_KEY);
       if (raw) {
         try {
-          return JSON.parse(raw);
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) stored = parsed;
         } catch {
           // fall through to re-seed from config.js
         }
       }
+
+      pages = resolvePageCount(stored || []);
+      const total = pages * PAGE_SLOTS;
+
+      if (stored) {
+        // Lowering CONFIG.pages drops whatever no longer has a slot to live in.
+        const kept = stored.filter((l) => l.slot < total);
+        if (kept.length !== stored.length) saveLinks(kept);
+        return kept;
+      }
+
       const seeded = (CONFIG.links || [])
-        .slice(0, GRID_SLOTS)
+        .slice(0, total)
         .map((link, i) => ({ ...link, slot: i }));
       saveLinks(seeded);
       return seeded;
@@ -325,10 +353,63 @@
       container.classList.toggle("edit-mode", editMode);
       container.innerHTML = "";
       const bySlot = new Map(links.map((l) => [l.slot, l]));
-      for (let slot = 0; slot < GRID_SLOTS; slot++) {
+      const first = currentPage * PAGE_SLOTS;
+      for (let slot = first; slot < first + PAGE_SLOTS; slot++) {
         const link = bySlot.get(slot);
         container.appendChild(link ? buildTile(link, slot) : buildEmptySlot(slot));
       }
+      renderPageNav();
+    }
+
+    // Only the current page is in the DOM, so drag-and-drop is confined to it
+    // for free — there are no drop targets on the pages you cannot see.
+    function goToPage(page) {
+      const next = ((page % pages) + pages) % pages;
+      if (next === currentPage) return;
+      currentPage = next;
+      renderLinks();
+    }
+
+    function navButton(label, aria, onClick) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = label;
+      btn.setAttribute("aria-label", aria);
+      btn.addEventListener("click", onClick);
+      return btn;
+    }
+
+    function renderPageNav() {
+      const nav = document.getElementById("page-nav");
+      nav.classList.toggle("hidden", pages < 2);
+      nav.innerHTML = "";
+      if (pages < 2) return;
+
+      const prev = navButton("\u2039", "Previous page", () => goToPage(currentPage - 1));
+      prev.className = "page-arrow";
+      nav.appendChild(prev);
+
+      for (let p = 0; p < pages; p++) {
+        const dot = navButton("", `Page ${p + 1}`, () => goToPage(p));
+        dot.className = p === currentPage ? "page-dot active" : "page-dot";
+        if (p === currentPage) dot.setAttribute("aria-current", "true");
+        nav.appendChild(dot);
+      }
+
+      const next = navButton("\u203a", "Next page", () => goToPage(currentPage + 1));
+      next.className = "page-arrow";
+      nav.appendChild(next);
+    }
+
+    function initPageKeys() {
+      document.addEventListener("keydown", (e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        // Leave the arrows alone while the link form is up or a field has focus.
+        if (!document.getElementById("link-modal").classList.contains("hidden")) return;
+        if (/^(input|textarea|select)$/i.test(e.target.tagName)) return;
+        goToPage(currentPage + (e.key === "ArrowRight" ? 1 : -1));
+      });
     }
 
     let formSlot = null;
@@ -429,6 +510,7 @@
       renderLinks();
       initEditToggle();
       initLinkForm();
+      initPageKeys();
       renderWidgets(CONFIG);
     }
 

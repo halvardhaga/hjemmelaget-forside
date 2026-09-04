@@ -156,6 +156,57 @@ body {
   background: #555;
 }
 
+#page-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+#page-nav.hidden {
+  display: none;
+}
+
+#page-nav button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+}
+
+.page-arrow {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.page-arrow:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* The dot itself is a pseudo-element so the button keeps a comfortable
+   click target without a comically large circle. */
+.page-dot::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.page-dot:hover::before {
+  border-color: rgba(255, 255, 255, 0.8);
+}
+
+.page-dot.active::before {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
 #edit-toggle {
   background: none;
   border: none;

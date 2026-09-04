@@ -3,6 +3,7 @@
 // which blocks fetch() between local files.
 const CONFIG = {
   background: "#141414",
+  pages: 3,
   widgets: ["wikipedia-potd"],
   links: [
     { name: "Gmail", url: "https://mail.google.com" },
