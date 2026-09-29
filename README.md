@@ -1,87 +1,171 @@
 # Hjemmelaget forside
 
-A local, static homepage for Firefox: background colour, a grid of link tiles, and small widgets (starting with Wikipedia's Picture of the Day). No build step, no server, no dependencies — just open `index.html`.
+A personal browser homepage: a paged grid of link tiles and a Wikipedia Picture of the Day widget on a plain dark background. A tiny local Python server serves it and saves link edits made in the page straight into `config.js`.
 
-## Use as your Firefox homepage / new tab
+No build step, no frameworks, no dependencies beyond the Python 3 that ships with macOS.
 
-Set your homepage (or a new-tab redirect extension) to:
+## Files
 
 ```
-file:///path/to/Hjemmelaget forside/index.html
+index.html          page structure
+style.css           all styling
+app.js              link grid, page nav, link editor, widget loader
+config.js           your settings and links — the only file with personal content
+server.py           serves this folder and writes link edits to config.js
+widgets/            one self-contained file per widget
+  wikipedia-potd.js
 ```
 
-## Pages
+## Running it
 
-The grid is paged: `‹ ● ○ ○ ›` under the grid moves between them. Click an arrow, click a dot to jump straight to a page, or press `←` / `→`. The arrows wrap around, so `‹` from page 1 lands on the last page.
+To try it by hand, run this in the project folder and open <http://localhost:8765> (Ctrl+C stops it):
 
-A new tab always opens on page 1 — the current page is deliberately not remembered, so the first grid you see is always the same one. Put your most-used links there.
+```bash
+/usr/bin/python3 server.py
+```
 
-Set how many pages you get with `pages` in `config.js` (see below).
+### Where the folder lives
 
-## Adding, removing, and reordering links
+The project lives in `~/Developer/Hjemmelaget forside`, with a symlink at `~/Documents/Repositories/Hjemmelaget forside` pointing to it, so it still shows up alongside the other repositories.
 
-Each page is a fixed 5×4 grid (20 slots). Click **Edit links** at the bottom of the grid to enter edit mode:
+It can't physically live in `~/Documents`. macOS blocks background processes from reading protected folders (Documents, Desktop, Downloads, iCloud Drive), so a `python3` started by launchd fails with `Operation not permitted`. macOS judges a file by its real location, so the symlink doesn't trip this — as long as the LaunchAgent below points at the real path under `~/Developer`. (Giving `python3` Full Disk Access would also work, but grants every background Python script access to everything.)
 
-- **Add** — click any empty dashed `+` slot, fill in name/URL/icon, Save.
-- **Edit** — click the ✎ on a tile, change the fields, Save.
-- **Remove** — click the × on a tile, or open it and click Delete.
-- **Reorder** — drag a tile onto another slot to swap them, or onto an empty slot to move it there. Dragging works within a page only; to move a link to another page, delete it and add it again there.
+To set it up on a new Mac, clone into `~/Developer` and create the symlink. Use `ln -s`, not Finder's *Make Alias*: Terminal and git don't follow Finder aliases.
 
-Edit mode stays on while you page around, so you can edit any page without leaving it. Click **Done** to leave edit mode. Changes save immediately — no file editing, no reload needed.
+```bash
+ln -s ~/Developer/"Hjemmelaget forside" ~/Documents/Repositories/"Hjemmelaget forside"
+```
 
-Under the hood, these edits are stored in your browser's `localStorage` for this page, keyed to slot position — one global sequence across all pages, so page 1 owns slots 0–19, page 2 owns 20–39, and so on (an empty slot is simply not rendered, so the grid stays fixed instead of reflowing). Clearing site data for this page (or opening it in a different browser/profile) resets it — see below.
+### Start at login
 
-## `config.js` — background, widgets, and the initial link seed
+A launchd agent starts the server at every login and restarts it if it crashes.
 
-Open `config.js` and edit the `CONFIG` object:
+1. Create `~/Library/LaunchAgents/local.hjemmelaget-forside.plist` with the content below. Adjust the paths if your home folder or the project folder differ; the `server.py` path must be the real location, not the path through the symlink.
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+   <plist version="1.0">
+   <dict>
+     <key>Label</key>
+     <string>local.hjemmelaget-forside</string>
+     <key>ProgramArguments</key>
+     <array>
+       <string>/usr/bin/python3</string>
+       <string>/Users/halvardhaga/Developer/Hjemmelaget forside/server.py</string>
+     </array>
+     <key>RunAtLoad</key>
+     <true/>
+     <key>KeepAlive</key>
+     <true/>
+     <key>StandardOutPath</key>
+     <string>/Users/halvardhaga/Library/Logs/hjemmelaget-forside.log</string>
+     <key>StandardErrorPath</key>
+     <string>/Users/halvardhaga/Library/Logs/hjemmelaget-forside.log</string>
+   </dict>
+   </plist>
+   ```
+
+2. Load it (this also starts it now):
+
+   ```bash
+   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.hjemmelaget-forside.plist
+   ```
+
+3. Open <http://localhost:8765>.
+
+Changes to `index.html`, `style.css`, `app.js`, `config.js` or widgets need no restart — just reload the page. After changing `server.py`, restart it:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/local.hjemmelaget-forside
+```
+
+To remove the agent, run the command below and delete the plist:
+
+```bash
+launchctl bootout gui/$(id -u)/local.hjemmelaget-forside
+```
+
+After editing the plist itself, run `bootout` and then `bootstrap` again — launchd only reads it when loading.
+
+If the page doesn't load, check whether the server is running (a process ID in the first column means yes; `-` means no):
+
+```bash
+launchctl list | grep hjemmelaget
+```
+
+The log at `~/Library/Logs/hjemmelaget-forside.log` says why it stopped.
+
+### Firefox
+
+- **Homepage:** Settings → Home → *Homepage and new windows* → *Custom URLs* → `http://localhost:8765`
+- **New tabs:** Firefox can't open a custom URL in new tabs by itself. Use a new-tab extension (e.g. *New Tab Override*) pointed at `http://localhost:8765`.
+
+## Using the page
+
+**Pages.** `‹ ● ○ ○ ›` under the grid switches pages: the arrows wrap around, the dots jump straight to a page, and the `←` / `→` keys do the same. A new tab always opens on page 1, so put your most-used links there. With a single page the nav is hidden.
+
+**Editing links.** Click **Edit links** under the grid:
+
+- **Add** — click an empty dashed `+` slot, fill in Name, URL and optionally Icon URL, and Save.
+- **Edit** — click a tile (or its ✎).
+- **Remove** — click the × on a tile, or Delete in its form.
+- **Reorder** — drag a tile onto another tile to swap them, or onto an empty slot to move it there. Dragging works within the current page; to move a link to another page, add it again there (or move its line in `config.js`).
+
+Click **Done** to leave edit mode. A URL typed without a scheme gets `https://` in front.
+
+Every change is saved to `config.js` immediately. If a save fails (usually because the server isn't running), an alert says so: the change stays on screen but is not in `config.js`, and disappears on the next reload. With two homepage tabs open, the last one to save wins — edit in a freshly opened tab.
+
+**Icons.** Each tile finds the site's own favicon automatically, trying in order the site's `/favicon.ico`, icon.horse, favicone.com and Google's favicon service. Icons smaller than 32px are only used if nothing sharper turns up, and if nothing loads at all the tile shows the first letter of its name. Set **Icon URL** on a link to override the automatic choice. The winning source for each link is cached in the browser's `localStorage`; that's only a cache, so clearing it just means icons are looked up again.
+
+Opening `index.html` directly as a file (`file://`) also works, but read-only: every edit fails to save.
+
+## `config.js`
 
 ```js
+// Hjemmelaget forside settings. See README.md for what each field does.
+// Strict JSON from here on: server.py rewrites "pages" when you edit links.
 const CONFIG = {
-  background: "#0d0d0d",
-  pages: 3,
-  widgets: ["wikipedia-potd"],
-  links: [
-    { name: "Gmail", url: "https://mail.google.com" },
-    { name: "GitHub", url: "https://github.com" },
-    { name: "Example", url: "https://example.com", icon: "🔧" }
+  "background": "#141414",
+  "widgets": ["wikipedia-potd"],
+  "pages": [
+    [
+      {"name": "Gmail", "url": "https://mail.google.com"},
+      null,
+      {"name": "GitHub", "url": "https://github.com", "iconUrl": "https://example.com/github.png"}
+    ],
+    [],
+    []
   ]
 };
 ```
 
-- **`background`** — any CSS colour value.
-- **`pages`** — how many 5×4 grids you get. With `1`, the page nav disappears entirely.
+- **`background`** — any CSS colour.
+- **`widgets`** — widget ids to show, top to bottom. Remove an id to turn that widget off.
+- **`pages`** — one array per 5×4 page, holding its 20 slots left to right, top to bottom. `null` is an empty slot, and empty slots at the end are left out. Each link has `name`, `url` and an optional `iconUrl`. Add a page by adding `[]`; deleting a page's array deletes its links.
 
-  **Lowering this number deletes links.** Anything sitting on a page that no longer exists is dropped from `localStorage` the next time the page loads — going 3 → 2 permanently removes whatever was on page 3. Raising the number is always safe. (If `pages` is missing or not a positive integer, nothing is deleted: the page count is derived from the links you already have and a warning is logged to the console.)
-- **`links`** — only used to *seed* the grid the very first time the page loads in a browser (up to `pages × 20` entries, in order, filling page 1 first). After that, the in-page editor above is the source of truth and this array is ignored — editing it won't change anything unless you clear `localStorage` for this page first.
-- **`widgets`** — array of widget ids to show, in order. Remove an id to turn a widget off — no code changes needed.
+The page edits `pages` for you, so hand-editing is mainly for the other fields. Everything after `const CONFIG = ` must be strict JSON — quoted keys, no comments, no trailing commas — because `server.py` reads it with Python's `json` module. A syntax error makes the page show "Failed to load config.js", and saves fail until it's fixed. Comment lines above `const CONFIG = ` are kept as they are; the object itself is rewritten in the layout shown above on every save.
 
-Save the file and reload the page (`Cmd+R`) to see `background`/`widgets` changes.
+## How it works
 
-### Why `config.js` instead of `config.json`?
+`index.html` loads `config.js` as a plain script, which defines the global `CONFIG`, and then `app.js`, which renders the grid, the page nav and the widgets. Only the current page of the grid is in the DOM. `config.js` is a script rather than a `.json` file so the page renders without a `fetch`, which also keeps the read-only `file://` fallback working.
 
-Firefox blocks `fetch()` between local `file://` documents (each local file is treated as its own opaque origin), so `fetch('config.json')` fails with a CORS error when the page is opened via `file://`. Loading `config.js` as a plain `<script>` tag sidesteps this — script tags aren't subject to that restriction — while keeping the config in a separate, easily-edited file.
+`server.py` uses only the Python standard library. It serves this folder on `127.0.0.1:8765` with caching turned off, so a new tab always shows `config.js` as it is on disk. Its only write endpoint, `POST /save`, takes the full `pages` array as JSON, swaps it into `config.js`, and writes the file atomically (temp file, then rename) so it is never left half-written.
 
-## Adding a new widget
+The server listens on `127.0.0.1` only, so no other machine can reach it. It doesn't check where requests come from, so a website open in the same browser could in principle send a save request and change your links. That is the worst case: the server serves nothing outside this folder and writes nothing but `config.js`.
 
-1. Create `widgets/<id>.js`. It must register itself:
+## Adding a widget
+
+1. Create `widgets/<id>.js` that registers itself:
 
    ```js
    Widgets["<id>"] = {
      async render(container) {
-       // populate `container` with the widget's DOM
+       // fill `container` with the widget's DOM
      }
    };
    ```
 
-2. Add `"<id>"` to the `widgets` array in `config.js`.
+2. Add `"<id>"` to `widgets` in `config.js`.
 
-That's it — `index.html` injects `widgets/<id>.js` and calls `.render()` automatically. No changes to `index.html` are needed.
-
-The included `widgets/wikipedia-potd.js` is a reference implementation: it fetches the day's featured image from Wikipedia's public REST API (`en.wikipedia.org/api/rest_v1/feed/featured/...`, which sends CORS headers allowing cross-origin/file:// access) and renders an image + caption.
-
-## Files
-
-- `index.html` — structure + inline script that renders links and loads widgets.
-- `style.css` — background and grid layout.
-- `config.js` — background colour, links, enabled widgets (edit this to customize).
-- `widgets/` — one self-contained file per widget.
+`app.js` loads `widgets/<id>.js` and calls `render()` with an empty box styled by `.widget`; `index.html` needs no changes. The `.widget-title`, `.widget-image` and `.widget-caption` classes in `style.css` keep widgets looking alike. `widgets/wikipedia-potd.js` is the reference: it fetches the day's featured image from Wikipedia's public API and renders the image with its caption.

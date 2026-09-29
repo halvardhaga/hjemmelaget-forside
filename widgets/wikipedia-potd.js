@@ -12,40 +12,29 @@ Widgets["wikipedia-potd"] = {
     const potd = data.image;
     if (!potd) throw new Error("No picture of the day in response");
 
-    const wrapper = document.createElement("div");
-
     const title = document.createElement("div");
+    title.className = "widget-title";
     title.textContent = "Picture of the day";
-    title.style.fontSize = "0.75rem";
-    title.style.opacity = "0.6";
-    title.style.marginBottom = "0.5rem";
-    title.style.textTransform = "uppercase";
-    title.style.letterSpacing = "0.05em";
-    wrapper.appendChild(title);
 
     const link = document.createElement("a");
     link.href = potd.filePage || potd.image?.source || "#";
 
     const img = document.createElement("img");
+    img.className = "widget-image";
     img.src = potd.thumbnail?.source || potd.image?.source;
     img.alt = potd.description?.text || "Wikipedia Picture of the Day";
-    img.style.width = "100%";
-    img.style.borderRadius = "8px";
-    img.style.display = "block";
+    link.append(img);
 
-    link.appendChild(img);
-    wrapper.appendChild(link);
+    const wrapper = document.createElement("div");
+    wrapper.append(title, link);
 
     if (potd.description?.text) {
       const caption = document.createElement("div");
+      caption.className = "widget-caption";
       caption.textContent = potd.description.text;
-      caption.style.fontSize = "0.8rem";
-      caption.style.opacity = "0.8";
-      caption.style.marginTop = "0.5rem";
-      wrapper.appendChild(caption);
+      wrapper.append(caption);
     }
 
-    container.innerHTML = "";
-    container.appendChild(wrapper);
+    container.replaceChildren(wrapper);
   },
 };

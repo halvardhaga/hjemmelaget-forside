@@ -78,7 +78,6 @@ body {
 }
 
 .tile img,
-.tile .emoji-icon,
 .tile .letter-icon {
   width: 40px;
   height: 40px;
@@ -315,9 +314,25 @@ body {
   padding: 1rem;
 }
 
-.widget img {
-  max-width: 100%;
+.widget-title {
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.widget-image {
+  display: block;
+  width: 100%;
   height: auto;
+  border-radius: 8px;
+}
+
+.widget-caption {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  opacity: 0.8;
 }
 
 /* Stack the widgets under the links when there isn't room side by side. */

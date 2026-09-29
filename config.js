@@ -1,25 +1,11 @@
-// Edit this file to change background colour, links, and enabled widgets.
-// Loaded as a plain script (not fetch) so it works from file:// in Firefox,
-// which blocks fetch() between local files.
+// Hjemmelaget forside settings. See README.md for what each field does.
+// Strict JSON from here on: server.py rewrites "pages" when you edit links.
 const CONFIG = {
-  background: "#141414",
-  pages: 3,
-  widgets: ["wikipedia-potd"],
-  links: [
-    { name: "Gmail", url: "https://mail.google.com" },
-    { name: "GitHub", url: "https://github.com" },
-    { name: "YouTube", url: "https://youtube.com" },
-    { name: "YouTube", url: "https://youtube.com" },
-    { name: "YouTube", url: "https://youtube.com" },
-    { name: "YouTube", url: "https://youtube.com" },
-    { name: "YouTube", url: "https://youtube.com" },
-    { name: "YouTube", url: "https://youtube.com" },
-    { name: "YouTube", url: "https://youtube.com" },
-    { name: "YouTube", url: "https://youtube.com" },
-    { name: "YouTube", url: "https://youtube.com" },
-    { name: "YouTube", url: "https://youtube.com" },
-    { name: "YouTube", url: "https://youtube.com" },
-    { name: "YouTube", url: "https://youtube.com" },
-    { name: "Wikipedia", url: "https://wikipedia.org" }
+  "background": "#141414",
+  "widgets": ["wikipedia-potd"],
+  "pages": [
+    [],
+    [],
+    []
   ]
 };
